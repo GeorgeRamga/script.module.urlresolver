@@ -1,6 +1,6 @@
-'''
-Plugin for URLResolver
-Copyright (C) 2018 gujal
+"""
+    Plugin for URLResolver
+    Copyright (C) 2018 gujal
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -14,20 +14,19 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
-'''
+"""
 
 import re
-from lib import helpers
+from six.moves import urllib_parse
+from urlresolver.plugins.lib import helpers
 from urlresolver import common
 from urlresolver.resolver import UrlResolver, ResolverError
+
 
 class VivosxResolver(UrlResolver):
     name = "vivosx"
     domains = ["vivo.sx"]
-    pattern = '(?://|\.)(vivo\.sx)/([0-9a-zA-Z]+)'
-
-    def __init__(self):
-        self.net = common.Net()
+    pattern = r'(?://|\.)(vivo\.sx)/(?:embed/)?([0-9a-zA-Z]+)'
 
     def get_media_url(self, host, media_id):
         web_url = self.get_url(host, media_id)
@@ -35,12 +34,23 @@ class VivosxResolver(UrlResolver):
                    'Referer': web_url}
         html = self.net.http_GET(web_url, headers=headers).content
 
-        r = re.search(r'<video\s*id="player"[^>]+data-stream="([^"]+)', html)
-                
+        r = re.search(r'''InitializeStream.+?source:\s*['"]([^'"]+)''', html, re.DOTALL)
+
         if r:
-            return r.group(1).decode('base64') + helpers.append_headers(headers)
+            return _rot47(urllib_parse.unquote(r.group(1))) + helpers.append_headers(headers)
 
         raise ResolverError('Video cannot be located.')
 
     def get_url(self, host, media_id):
-        return 'https://vivo.sx/%s' % media_id
+        return self._default_get_url(host, media_id, template='https://{host}/embed/{media_id}')
+
+
+def _rot47(s):
+    x = []
+    for i in range(len(s)):
+        j = ord(s[i])
+        if j >= 33 and j <= 126:
+            x.append(chr(33 + ((j + 14) % 94)))
+        else:
+            x.append(s[i])
+    return ''.join(x)
